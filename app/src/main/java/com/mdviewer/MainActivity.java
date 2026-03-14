@@ -31,6 +31,10 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        
+        // Hide the system bars for a clean start
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        
         setContentView(R.layout.activity_main);
 
         // minSdk is 33 (Tiramisu), so we only need to check for granular media permissions
@@ -58,15 +62,11 @@ public class MainActivity extends AppCompatActivity {
         webView.setOnScrollChangeListener((v, scrollX, scrollY, oldScrollX, oldScrollY) -> {
             WindowInsetsControllerCompat windowInsetsController = WindowCompat.getInsetsController(getWindow(), webView);
             if (scrollY > oldScrollY && scrollY > 0) {
-                // Scrolling down: go full screen
-                WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
-                if (getSupportActionBar() != null) getSupportActionBar().hide();
+                // Scrolling down: hide system bars
                 windowInsetsController.hide(WindowInsetsCompat.Type.systemBars());
                 windowInsetsController.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
             } else if (scrollY < oldScrollY) {
-                // Scrolling up: show bars
-                WindowCompat.setDecorFitsSystemWindows(getWindow(), true);
-                if (getSupportActionBar() != null) getSupportActionBar().show();
+                // Scrolling up: show system bars
                 windowInsetsController.show(WindowInsetsCompat.Type.systemBars());
             }
         });
@@ -144,7 +144,8 @@ public class MainActivity extends AppCompatActivity {
             
             renderMarkdown(markdown, baseUrl);
         } else {
-            renderMarkdown("# Welcome\n\nOpen a markdown file to view it. (Offline Mode)", "file:///android_asset/");
+            // "Splashscreen" / Welcome screen removed, showing empty state or help
+            renderMarkdown("", "file:///android_asset/");
         }
     }
 
