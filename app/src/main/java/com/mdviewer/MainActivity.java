@@ -85,6 +85,17 @@ public class MainActivity extends AppCompatActivity {
 
         webView.setWebViewClient(new WebViewClient() {
             @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                Uri url = request.getUrl();
+                if (url != null && ("http".equals(url.getScheme()) || "https".equals(url.getScheme()))) {
+                    Intent intent = new Intent(Intent.ACTION_VIEW, url);
+                    startActivity(intent);
+                    return true;
+                }
+                return super.shouldOverrideUrlLoading(view, request);
+            }
+
+            @Override
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
                 Uri url = request.getUrl();
                 if (url != null && "file".equals(url.getScheme())) {
