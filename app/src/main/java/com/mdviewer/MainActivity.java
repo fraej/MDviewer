@@ -1,33 +1,45 @@
 package com.mdviewer;
 
 import android.Manifest;
+import android.annotation.SuppressLint;
+import android.content.ContentValues;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Environment;
+import android.provider.MediaStore;
 import android.util.Base64;
 import android.util.Log;
-import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
-import androidx.core.view.WindowCompat;
-import androidx.core.view.WindowInsetsCompat;
-import androidx.core.view.WindowInsetsControllerCompat;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.Toast;
+
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
+
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
 
 public class MainActivity extends AppCompatActivity {
 
     private static final String TAG = "MainActivity";
     private WebView webView;
 
+    @SuppressLint("SetJavaScriptEnabled")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -124,28 +136,66 @@ public class MainActivity extends AppCompatActivity {
 
     private void handleIntent(Intent intent) {
         String action = intent.getAction();
-        Uri data = intent.getData();
+        String type = intent.getType();
 
-        if (Intent.ACTION_VIEW.equals(action) && data != null) {
-            String markdown = readTextFromUri(data);
-            String baseUrl = "file:///android_asset/";
-            
-            if ("file".equals(data.getScheme())) {
-                String path = data.getPath();
-                if (path != null) {
-                    baseUrl = "file://" + path.substring(0, path.lastIndexOf('/') + 1);
-                }
-            } else if ("content".equals(data.getScheme())) {
-                String realPath = getRealPathFromURI(data);
-                if (realPath != null) {
-                    baseUrl = "file://" + realPath.substring(0, realPath.lastIndexOf('/') + 1);
+        if (Intent.ACTION_VIEW.equals(action)) {
+            Uri data = intent.getData();
+            if (data != null) {
+                processMarkdownUri(data);
+            }
+        } else if (Intent.ACTION_SEND.equals(action) && type != null) {
+            if ("text/plain".equals(type) || "text/markdown".equals(type)) {
+                String sharedText = intent.getStringExtra(Intent.EXTRA_TEXT);
+                if (sharedText != null) {
+                    saveAndOpenSharedMarkdown(sharedText);
                 }
             }
-            
-            renderMarkdown(markdown, baseUrl);
         } else {
-            // "Splashscreen" / Welcome screen removed, showing empty state or help
             renderMarkdown("", "file:///android_asset/");
+        }
+    }
+
+    private void processMarkdownUri(Uri uri) {
+        String markdown = readTextFromUri(uri);
+        String baseUrl = "file:///android_asset/";
+        
+        if ("file".equals(uri.getScheme())) {
+            String path = uri.getPath();
+            if (path != null) {
+                baseUrl = "file://" + path.substring(0, path.lastIndexOf('/') + 1);
+            }
+        } else if ("content".equals(uri.getScheme())) {
+            String realPath = getRealPathFromURI(uri);
+            if (realPath != null) {
+                baseUrl = "file://" + realPath.substring(0, realPath.lastIndexOf('/') + 1);
+            }
+        }
+        
+        renderMarkdown(markdown, baseUrl);
+    }
+
+    private void saveAndOpenSharedMarkdown(String text) {
+        String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
+        String fileName = "shared_markdown_" + timeStamp + ".md";
+
+        ContentValues values = new ContentValues();
+        values.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
+        values.put(MediaStore.MediaColumns.MIME_TYPE, "text/markdown");
+        values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
+
+        Uri uri = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+
+        if (uri != null) {
+            try (OutputStream outputStream = getContentResolver().openOutputStream(uri)) {
+                if (outputStream != null) {
+                    outputStream.write(text.getBytes(StandardCharsets.UTF_8));
+                    Toast.makeText(this, "Saved to Downloads: " + fileName, Toast.LENGTH_SHORT).show();
+                    processMarkdownUri(uri);
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error saving shared markdown", e);
+                Toast.makeText(this, "Error saving file: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            }
         }
     }
 
