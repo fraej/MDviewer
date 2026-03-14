@@ -11,6 +11,8 @@ import android.os.Environment;
 import android.provider.MediaStore;
 import android.util.Base64;
 import android.util.Log;
+import android.view.GestureDetector;
+import android.view.MotionEvent;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
@@ -18,6 +20,9 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
@@ -38,8 +43,18 @@ public class MainActivity extends AppCompatActivity {
 
     private static final String TAG = "MainActivity";
     private WebView webView;
+    private GestureDetector gestureDetector;
 
-    @SuppressLint("SetJavaScriptEnabled")
+    private final ActivityResultLauncher<String[]> filePickerLauncher = registerForActivityResult(
+            new ActivityResultContracts.OpenDocument(),
+            uri -> {
+                if (uri != null) {
+                    processMarkdownUri(uri);
+                }
+            }
+    );
+
+    @SuppressLint({"SetJavaScriptEnabled", "ClickableViewAccessibility"})
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -117,6 +132,26 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
+            private static final int SWIPE_THRESHOLD = 100;
+            private static final int SWIPE_VELOCITY_THRESHOLD = 100;
+
+            @Override
+            public boolean onFling(MotionEvent e1, @NonNull MotionEvent e2, float velocityX, float velocityY) {
+                if (e1 == null) return false;
+                float diffX = e2.getX() - e1.getX();
+                if (Math.abs(diffX) > Math.abs(e2.getY() - e1.getY())) {
+                    if (Math.abs(diffX) > SWIPE_THRESHOLD && Math.abs(velocityX) > SWIPE_VELOCITY_THRESHOLD) {
+                        finish();
+                        return true;
+                    }
+                }
+                return false;
+            }
+        });
+
+        webView.setOnTouchListener((v, event) -> gestureDetector.onTouchEvent(event));
+
         handleIntent(getIntent());
     }
 
@@ -161,6 +196,8 @@ public class MainActivity extends AppCompatActivity {
                     saveAndOpenSharedMarkdown(sharedText);
                 }
             }
+        } else if (Intent.ACTION_MAIN.equals(action)) {
+            filePickerLauncher.launch(new String[]{"text/markdown", "text/plain", "application/octet-stream"});
         } else {
             renderMarkdown("", "file:///android_asset/");
         }
