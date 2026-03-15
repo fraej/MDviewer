@@ -11,6 +11,7 @@ A lightweight, feature-rich Markdown viewer for Android. MDviewer is designed to
   - Diagrams (Mermaid.js)
   - Syntax Highlighting (highlight.js)
   - Task lists, Footnotes, Abbreviations, Deflists, and more.
+- **🖼️ SVG Viewer**: Open and view SVG images directly. Images are automatically centered and scaled to fit your screen perfectly.
 - **🌲 Obsidian Compatibility**: Supports Wikilinks `[[Link]]` and media embedding `![[image.png]]`.
 - **🌙 Immersive Mode**: Automatically hides system bars when scrolling down for a full-screen experience.
 - **👋 Gesture Navigation**: Swipe left or right to quickly close the app.

@@ -45,7 +45,7 @@ public class MainActivity extends AppCompatActivity {
             new ActivityResultContracts.OpenDocument(),
             uri -> {
                 if (uri != null) {
-                    processMarkdownUri(uri);
+                    processFileUri(uri);
                 }
             }
     );
@@ -163,7 +163,7 @@ public class MainActivity extends AppCompatActivity {
         if (Intent.ACTION_VIEW.equals(action)) {
             Uri data = intent.getData();
             if (data != null) {
-                processMarkdownUri(data);
+                processFileUri(data);
             }
         } else if (Intent.ACTION_SEND.equals(action) && type != null) {
             if ("text/plain".equals(type) || "text/markdown".equals(type)) {
@@ -173,9 +173,34 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         } else if (Intent.ACTION_MAIN.equals(action)) {
-            filePickerLauncher.launch(new String[]{"text/markdown", "text/plain", "application/octet-stream"});
+            filePickerLauncher.launch(new String[]{"text/markdown", "text/plain", "application/octet-stream", "image/svg+xml"});
         } else {
             renderMarkdown("", "file:///android_asset/");
+        }
+    }
+
+    private void processFileUri(Uri uri) {
+        String mimeType = getContentResolver().getType(uri);
+        boolean isSvg = false;
+
+        if ("image/svg+xml".equals(mimeType)) {
+            isSvg = true;
+        } else {
+            String path = uri.getPath();
+            if (path != null && path.toLowerCase().endsWith(".svg")) {
+                isSvg = true;
+            } else {
+                String realPath = getRealPathFromURI(uri);
+                if (realPath != null && realPath.toLowerCase().endsWith(".svg")) {
+                    isSvg = true;
+                }
+            }
+        }
+
+        if (isSvg) {
+            renderSvg(uri);
+        } else {
+            processMarkdownUri(uri);
         }
     }
 
@@ -214,7 +239,7 @@ public class MainActivity extends AppCompatActivity {
                 if (outputStream != null) {
                     outputStream.write(text.getBytes(StandardCharsets.UTF_8));
                     Toast.makeText(this, "Saved to Downloads: " + fileName, Toast.LENGTH_SHORT).show();
-                    processMarkdownUri(uri);
+                    processFileUri(uri);
                 }
             } catch (Exception e) {
                 Log.e(TAG, "Error saving shared markdown", e);
@@ -271,5 +296,26 @@ public class MainActivity extends AppCompatActivity {
         htmlTemplate = htmlTemplate.replace("{{MARKDOWN_BASE64}}", base64Markdown);
 
         webView.loadDataWithBaseURL(baseUrl, htmlTemplate, "text/html", "utf-8", null);
+    }
+
+    private void renderSvg(Uri uri) {
+        String svgContent = readTextFromUri(uri);
+        String base64Svg = Base64.encodeToString(svgContent.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
+        
+        String htmlTemplate = "<!DOCTYPE html>\n" +
+                "<html>\n" +
+                "<head>\n" +
+                "    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes\">\n" +
+                "    <style>\n" +
+                "        body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; background-color: #ffffff; }\n" +
+                "        img { max-width: 100%; max-height: 100vh; object-fit: contain; }\n" +
+                "    </style>\n" +
+                "</head>\n" +
+                "<body>\n" +
+                "    <img src=\"data:image/svg+xml;base64," + base64Svg + "\" />\n" +
+                "</body>\n" +
+                "</html>";
+
+        webView.loadDataWithBaseURL(null, htmlTemplate, "text/html", "utf-8", null);
     }
 }
