@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/nav_open_file"
+        android:title="@string/menu_open_file" />
+
+    <item android:id="@+id/nav_recent_header" android:title="@string/menu_recent_files">
+        <menu android:id="@+id/menu_recent">
+            <!-- Dynamic items -->
+        </menu>
+    </item>
+
+    <item android:title="@string/menu_theme">
+        <menu>
+            <group android:checkableBehavior="single" android:id="@+id/theme_group">
+                <item
+                    android:id="@+id/nav_theme_system"
+                    android:title="@string/menu_theme_system" />
+                <item
+                    android:id="@+id/nav_theme_light"
+                    android:title="@string/menu_theme_light" />
+                <item
+                    android:id="@+id/nav_theme_dark"
+                    android:title="@string/menu_theme_dark" />
+            </group>
+        </menu>
+    </item>
+</menu>

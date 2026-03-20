@@ -67,7 +67,11 @@ try {
     document.getElementById('content').innerHTML = md.render(rawMarkdown);
     
     if (window.mermaid) {
-        window.mermaid.initialize({ startOnLoad: false, theme: 'default' });
+        const isDarkMode = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        window.mermaid.initialize({
+            startOnLoad: false,
+            theme: isDarkMode ? 'dark' : 'default'
+        });
         window.mermaid.run({ querySelector: '.mermaid' });
     }
 } catch (e) {
