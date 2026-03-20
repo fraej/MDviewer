@@ -494,24 +494,25 @@ public class MainActivity extends AppCompatActivity {
         return null;
     }
 
-    private void renderMarkdown(String markdown, String baseUrl) {
-        String htmlTemplate;
-        try (InputStream is = getAssets().open("template.html");
+    private String loadAssetTemplate(String fileName) {
+        try (InputStream is = getAssets().open(fileName);
              BufferedReader reader = new BufferedReader(new InputStreamReader(is))) {
             StringBuilder sb = new StringBuilder();
             String line;
             while ((line = reader.readLine()) != null) {
                 sb.append(line).append("\n");
             }
-            htmlTemplate = sb.toString();
+            return sb.toString();
         } catch (Exception e) {
-            Log.e(TAG, "Error loading template.html", e);
-            htmlTemplate = "<html><body><h1>Error loading template.html</h1></body></html>";
+            Log.e(TAG, "Error loading " + fileName, e);
+            return "<html><body><h1>Error loading " + fileName + "</h1></body></html>";
         }
+    }
 
+    private void renderMarkdown(String markdown, String baseUrl) {
+        String htmlTemplate = loadAssetTemplate("template.html");
         String base64Markdown = Base64.encodeToString(markdown.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
         htmlTemplate = htmlTemplate.replace("{{MARKDOWN_BASE64}}", base64Markdown);
-
         webView.loadDataWithBaseURL(baseUrl, htmlTemplate, "text/html", "utf-8", null);
     }
 
@@ -519,25 +520,8 @@ public class MainActivity extends AppCompatActivity {
         String svgContent = readTextFromUri(uri);
         String base64Svg = Base64.encodeToString(svgContent.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
         
-        String htmlTemplate = "<!DOCTYPE html>\n" +
-                "<html>\n" +
-                "<head>\n" +
-                "    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes\">\n" +
-                "    <style>\n" +
-                "        @media (prefers-color-scheme: dark) {\n" +
-                "            body { background-color: #000000; color: #ffffff; }\n" +
-                "        }\n" +
-                "        @media (prefers-color-scheme: light) {\n" +
-                "            body { background-color: #ffffff; color: #000000; }\n" +
-                "        }\n" +
-                "        body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; }\n" +
-                "        img { max-width: 100%; max-height: 100vh; object-fit: contain; }\n" +
-                "    </style>\n" +
-                "</head>\n" +
-                "<body>\n" +
-                "    <img src=\"data:image/svg+xml;base64," + base64Svg + "\" />\n" +
-                "</body>\n" +
-                "</html>";
+        String htmlTemplate = loadAssetTemplate("svg_template.html");
+        htmlTemplate = htmlTemplate.replace("{{SVG_BASE64}}", base64Svg);
 
         webView.loadDataWithBaseURL(null, htmlTemplate, "text/html", "utf-8", null);
     }
