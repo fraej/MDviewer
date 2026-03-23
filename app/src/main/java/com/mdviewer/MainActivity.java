@@ -79,6 +79,7 @@ public class MainActivity extends AppCompatActivity {
                     }
                     processFileUri(uri);
                     addRecentFile(uri);
+                    drawerLayout.closeDrawer(GravityCompat.START);
                 }
             }
     );
@@ -132,7 +133,9 @@ public class MainActivity extends AppCompatActivity {
             int id = item.getItemId();
             if (id == R.id.nav_open_file) {
                 filePickerLauncher.launch(new String[]{"text/markdown", "text/plain", "application/octet-stream", "image/svg+xml"});
-                drawerLayout.closeDrawer(GravityCompat.START);
+                if (currentUri != null) {
+                    drawerLayout.closeDrawer(GravityCompat.START);
+                }
                 return true;
             }
 
@@ -151,14 +154,18 @@ public class MainActivity extends AppCompatActivity {
                     sharedPreferences.edit().putInt("theme_mode", newMode).apply();
                     AppCompatDelegate.setDefaultNightMode(newMode);
                 }
-                drawerLayout.closeDrawer(GravityCompat.START);
+                if (currentUri != null) {
+                    drawerLayout.closeDrawer(GravityCompat.START);
+                }
                 return true;
             }
 
             // Handle recent file clicks (they don't have static IDs)
             if (item.getIntent() != null && item.getIntent().getData() != null) {
                 processFileUri(item.getIntent().getData());
-                drawerLayout.closeDrawer(GravityCompat.START);
+                if (currentUri != null) {
+                    drawerLayout.closeDrawer(GravityCompat.START);
+                }
                 return true;
             }
 
@@ -190,10 +197,7 @@ public class MainActivity extends AppCompatActivity {
         webSettings.setDisplayZoomControls(false);
 
         // Set initial background color to prevent white flash
-        boolean isDark = (themeMode == AppCompatDelegate.MODE_NIGHT_YES) || 
-                        (themeMode == AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM && 
-                         (getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES);
-        webView.setBackgroundColor(isDark ? Color.BLACK : Color.WHITE);
+        updateWebViewBackgroundColor();
 
         webView.setOnScrollChangeListener((v, scrollX, scrollY, oldScrollX, oldScrollY) -> {
             WindowInsetsControllerCompat windowInsetsController = WindowCompat.getInsetsController(getWindow(), webView);
@@ -252,6 +256,14 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private void updateWebViewBackgroundColor() {
+        int themeMode = sharedPreferences.getInt("theme_mode", AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM);
+        boolean isDark = (themeMode == AppCompatDelegate.MODE_NIGHT_YES) || 
+                        (themeMode == AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM && 
+                         (getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES);
+        webView.setBackgroundColor(isDark ? Color.BLACK : Color.WHITE);
+    }
+
     @Override
     protected void onSaveInstanceState(@NonNull Bundle outState) {
         super.onSaveInstanceState(outState);
@@ -308,10 +320,27 @@ public class MainActivity extends AppCompatActivity {
         
         subMenu.clear();
         List<String> recentFiles = getRecentFiles();
+        List<String> validRecentFiles = new ArrayList<>();
+        
+        boolean changed = false;
+        for (String uriString : recentFiles) {
+            Uri uri = Uri.parse(uriString);
+            if (isFileAvailable(uri)) {
+                validRecentFiles.add(uriString);
+            } else {
+                changed = true;
+            }
+        }
+        
+        if (changed) {
+            saveRecentFiles(validRecentFiles);
+            recentFiles = validRecentFiles;
+        }
         
         if (recentFiles.isEmpty()) {
-            subMenu.add(R.string.no_recent_files).setEnabled(false);
+            recentHeaderItem.setVisible(false);
         } else {
+            recentHeaderItem.setVisible(true);
             for (String uriString : recentFiles) {
                 Uri uri = Uri.parse(uriString);
                 String name = getFileName(uri);
@@ -321,6 +350,21 @@ public class MainActivity extends AppCompatActivity {
                 item.setIntent(intent);
                 item.setIcon(R.drawable.ic_menu); // Reuse icon for now
             }
+        }
+    }
+
+    private boolean isFileAvailable(Uri uri) {
+        try {
+            if ("file".equals(uri.getScheme())) {
+                String path = uri.getPath();
+                return path != null && new java.io.File(path).exists();
+            } else {
+                try (android.os.ParcelFileDescriptor pfd = getContentResolver().openFileDescriptor(uri, "r")) {
+                    return pfd != null;
+                }
+            }
+        } catch (Exception e) {
+            return false;
         }
     }
 
@@ -393,10 +437,13 @@ public class MainActivity extends AppCompatActivity {
         } else {
             renderMarkdown("", "file:///android_asset/");
         }
+        
+        updateDrawerState();
     }
 
     private void processFileUri(Uri uri) {
         currentUri = uri;
+        updateDrawerState();
         String mimeType = getContentResolver().getType(uri);
         boolean isSvg = false;
 
@@ -418,6 +465,15 @@ public class MainActivity extends AppCompatActivity {
             renderSvg(uri);
         } else {
             processMarkdownUri(uri);
+        }
+    }
+
+    private void updateDrawerState() {
+        if (currentUri == null) {
+            drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_OPEN);
+            drawerLayout.openDrawer(GravityCompat.START);
+        } else {
+            drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_UNLOCKED);
         }
     }
 
@@ -510,6 +566,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void renderMarkdown(String markdown, String baseUrl) {
+        updateWebViewBackgroundColor();
         String htmlTemplate = loadAssetTemplate("template.html");
         String base64Markdown = Base64.encodeToString(markdown.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
         htmlTemplate = htmlTemplate.replace("{{MARKDOWN_BASE64}}", base64Markdown);
@@ -517,6 +574,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void renderSvg(Uri uri) {
+        webView.setBackgroundColor(Color.BLACK);
         String svgContent = readTextFromUri(uri);
         String base64Svg = Base64.encodeToString(svgContent.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
         
