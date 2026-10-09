@@ -43,6 +43,7 @@ import com.google.android.material.navigation.NavigationView;
 
 import org.json.JSONArray;
 import org.json.JSONException;
+import org.json.JSONObject;
 
 import java.io.BufferedReader;
 import java.io.InputStream;
@@ -66,6 +67,7 @@ public class MainActivity extends AppCompatActivity {
     private SharedPreferences sharedPreferences;
     private NavigationView navigationView;
     private Uri currentUri;
+    private String pendingFragment;
 
     private final ActivityResultLauncher<String[]> filePickerLauncher = registerForActivityResult(
             new ActivityResultContracts.OpenDocument(),
@@ -140,7 +142,8 @@ public class MainActivity extends AppCompatActivity {
             }
 
             // Handle theme switching
-            int newMode = themeMode;
+            int currentMode = sharedPreferences.getInt("theme_mode", AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM);
+            int newMode = currentMode;
             if (id == R.id.nav_theme_light) {
                 newMode = AppCompatDelegate.MODE_NIGHT_NO;
             } else if (id == R.id.nav_theme_dark) {
@@ -150,7 +153,7 @@ public class MainActivity extends AppCompatActivity {
             }
 
             if (id == R.id.nav_theme_light || id == R.id.nav_theme_dark || id == R.id.nav_theme_system) {
-                if (themeMode != newMode) {
+                if (currentMode != newMode) {
                     sharedPreferences.edit().putInt("theme_mode", newMode).apply();
                     AppCompatDelegate.setDefaultNightMode(newMode);
                 }
@@ -215,12 +218,52 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri url = request.getUrl();
+                if (!request.isForMainFrame()) return true;
+                // Let WebView handle footnotes and other anchors within the displayed document.
+                if (url.getFragment() != null && view.getUrl() != null &&
+                        withoutFragment(url).equals(withoutFragment(Uri.parse(view.getUrl())))) {
+                    return false;
+                }
                 if (url != null && ("http".equals(url.getScheme()) || "https".equals(url.getScheme()))) {
                     Intent intent = new Intent(Intent.ACTION_VIEW, url);
                     startActivity(intent);
                     return true;
                 }
-                return super.shouldOverrideUrlLoading(view, request);
+                if ("file".equals(url.getScheme()) || "content".equals(url.getScheme())) {
+                    Uri documentUri = withoutFragment(url);
+                    try {
+                        String name = getFileName(documentUri);
+                        String type = getContentResolver().getType(documentUri);
+                        boolean supported = name != null && name.toLowerCase(Locale.ROOT)
+                                .matches(".*\\.(md|markdown|txt|svg)$");
+                        supported |= "text/markdown".equals(type) || "text/plain".equals(type) ||
+                                "image/svg+xml".equals(type);
+                        if (supported && isFileAvailable(documentUri)) {
+                            processFileUri(documentUri, url.getFragment());
+                            addRecentFile(documentUri);
+                        } else {
+                            Toast.makeText(MainActivity.this,
+                                    "Cannot open this link. Use Open file to select an accessible Markdown or SVG file.",
+                                    Toast.LENGTH_LONG).show();
+                        }
+                    } catch (SecurityException e) {
+                        Toast.makeText(MainActivity.this, "Access denied. Use Open file to select the linked document.",
+                                Toast.LENGTH_LONG).show();
+                    }
+                }
+                // Never navigate the viewer to arbitrary HTML or executable URL schemes.
+                return true;
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                if (pendingFragment != null) {
+                    String fragment = JSONObject.quote(pendingFragment);
+                    pendingFragment = null;
+                    view.evaluateJavascript("(function(){const id=" + fragment +
+                            ";const target=document.getElementById(id)||document.getElementsByName(id)[0];" +
+                            "if(target)target.scrollIntoView();})()", null);
+                }
             }
 
             @Override
@@ -256,12 +299,19 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void updateWebViewBackgroundColor() {
+    private boolean isDarkMode() {
         int themeMode = sharedPreferences.getInt("theme_mode", AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM);
-        boolean isDark = (themeMode == AppCompatDelegate.MODE_NIGHT_YES) || 
-                        (themeMode == AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM && 
-                         (getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES);
-        webView.setBackgroundColor(isDark ? Color.BLACK : Color.WHITE);
+        return (themeMode == AppCompatDelegate.MODE_NIGHT_YES) ||
+               (themeMode == AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM &&
+                (getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES);
+    }
+
+    private static Uri withoutFragment(Uri uri) {
+        return uri.buildUpon().fragment(null).build();
+    }
+
+    private void updateWebViewBackgroundColor() {
+        webView.setBackgroundColor(isDarkMode() ? Color.BLACK : Color.WHITE);
     }
 
     @Override
@@ -357,7 +407,7 @@ public class MainActivity extends AppCompatActivity {
         try {
             if ("file".equals(uri.getScheme())) {
                 String path = uri.getPath();
-                return path != null && new java.io.File(path).exists();
+                return path != null && new java.io.File(path).isFile() && new java.io.File(path).canRead();
             } else {
                 try (android.os.ParcelFileDescriptor pfd = getContentResolver().openFileDescriptor(uri, "r")) {
                     return pfd != null;
@@ -442,6 +492,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void processFileUri(Uri uri) {
+        processFileUri(uri, null);
+    }
+
+    private void processFileUri(Uri uri, String fragment) {
+        pendingFragment = fragment;
         currentUri = uri;
         updateDrawerState();
         String mimeType = getContentResolver().getType(uri);
@@ -479,17 +534,12 @@ public class MainActivity extends AppCompatActivity {
 
     private void processMarkdownUri(Uri uri) {
         String markdown = readTextFromUri(uri);
-        String baseUrl = "file:///android_asset/";
-        
-        if ("file".equals(uri.getScheme())) {
-            String path = uri.getPath();
-            if (path != null) {
-                baseUrl = "file://" + path.substring(0, path.lastIndexOf('/') + 1);
-            }
-        } else if ("content".equals(uri.getScheme())) {
+        // A document URL resolves both relative files and same-document fragments correctly.
+        String baseUrl = uri.toString();
+        if ("content".equals(uri.getScheme())) {
             String realPath = getRealPathFromURI(uri);
             if (realPath != null) {
-                baseUrl = "file://" + realPath.substring(0, realPath.lastIndexOf('/') + 1);
+                baseUrl = Uri.fromFile(new java.io.File(realPath)).toString();
             }
         }
         
@@ -570,16 +620,20 @@ public class MainActivity extends AppCompatActivity {
         String htmlTemplate = loadAssetTemplate("template.html");
         String base64Markdown = Base64.encodeToString(markdown.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
         htmlTemplate = htmlTemplate.replace("{{MARKDOWN_BASE64}}", base64Markdown);
-        webView.loadDataWithBaseURL(baseUrl, htmlTemplate, "text/html", "utf-8", null);
+        htmlTemplate = htmlTemplate.replace("{{IS_DARK}}", isDarkMode() ? "true" : "false");
+        webView.loadDataWithBaseURL(baseUrl, htmlTemplate, "text/html", "utf-8", baseUrl);
     }
 
     private void renderSvg(Uri uri) {
-        webView.setBackgroundColor(Color.BLACK);
+        boolean isDark = isDarkMode();
+        webView.setBackgroundColor(isDark ? Color.BLACK : Color.WHITE);
         String svgContent = readTextFromUri(uri);
         String base64Svg = Base64.encodeToString(svgContent.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
         
         String htmlTemplate = loadAssetTemplate("svg_template.html");
         htmlTemplate = htmlTemplate.replace("{{SVG_BASE64}}", base64Svg);
+        htmlTemplate = htmlTemplate.replace("{{BG_COLOR}}", isDark ? "#000000" : "#ffffff");
+        htmlTemplate = htmlTemplate.replace("{{TEXT_COLOR}}", isDark ? "#ffffff" : "#000000");
 
         webView.loadDataWithBaseURL(null, htmlTemplate, "text/html", "utf-8", null);
     }

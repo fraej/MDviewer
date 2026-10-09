@@ -25,6 +25,21 @@ MDviewer is built with:
 - WebView for rendering
 - [markdown-it](https://github.com/markdown-it/markdown-it) for Markdown parsing
 
+## Tests
+
+- Android activity regression tests: `./gradlew testDebugUnitTest`
+- Renderer regression tests (Node.js 22.22.2+ on the 22.x line): `npm ci` then `npm test`
+- Android checks and APK: `./gradlew lintDebug assembleDebug`
+
+The renderer tests exercise the bundled assets in a DOM environment. Mermaid's
+layout is stubbed; its input and security settings are checked. Android tests use
+Robolectric and do not require a device. Linked documents must already be readable
+by the app; Android document-provider grants do not automatically include sibling files.
+
+DOMPurify 3.4.15 is bundled for offline HTML sanitization from
+[the upstream release](https://github.com/cure53/DOMPurify/releases/tag/3.4.15).
+Its license is included in `app/src/main/assets/DOMPurify-LICENSE.txt`.
+
 ## License
 
 This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
