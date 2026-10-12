@@ -1,63 +1,118 @@
 # MDviewer
 
-A lightweight, feature-rich Markdown viewer for Android. MDviewer is designed to provide a clean, distraction-free reading experience for your Markdown files, with full support for modern Markdown extensions and Obsidian-style syntax. It also opens images, comic book archives and DjVu documents.
+MDviewer is an offline viewer for Android. It opens Markdown notes, images, comic books and DjVu
+documents in one simple, distraction-free reader.
 
-## Features
+## What it opens
 
-- **🚀 Direct Launch**: Automatically opens a file picker when launched directly.
-- **📱 Shared Text Support**: Share text from any app to MDviewer; it will automatically save it as a `.md` file in your Downloads folder and open it.
-- **🎨 Modern Rendering**: Powered by `markdown-it` with support for:
-  - Math (KaTeX)
-  - Diagrams (Mermaid.js)
-  - Syntax Highlighting (highlight.js)
-  - Task lists, Footnotes, Abbreviations, Deflists, and more.
-- **🖼️ SVG Viewer**: Open and view SVG images directly. Images are automatically centered and scaled to fit your screen perfectly.
-- **📷 Image Viewer**: JPEG, PNG, GIF, WebP, BMP and AVIF. Images are decoded by the WebView's own (Chromium) codecs rather than the Android platform decoder, so AVIF files display even on devices whose gallery cannot show them.
-- **📚 Comic Books**: CBZ (ZIP), CBR (RAR 4 and RAR 5) and CB7 (7z) archives open as a vertically scrolling list of pages in natural order (`page2` before `page10`). The archive type is detected from the file contents, so a `.cbr` that is really a ZIP still opens.
-- **📄 DjVu**: Single-file DjVu documents are rendered page by page with [DjVu.js](https://github.com/RussCoder/djvujs) in a background worker. Pages far from the current one are released to save memory.
-- **🌲 Obsidian Compatibility**: Supports Wikilinks `[[Link]]` and media embedding `![[image.png]]`.
-- **🌙 Immersive Mode**: Automatically hides system bars when scrolling down for a full-screen experience.
-- **👋 Gesture Navigation**: Swipe left or right to quickly close the app.
-- **🌐 Web Links**: Automatically opens external hyperlinks in your default browser.
-- **📁 Offline First**: Works entirely offline with zero network dependencies (except for external web links).
+| Type | Files | How it is shown |
+|---|---|---|
+| Markdown | `.md`, `.markdown`, `.txt` | Formatted text with math, diagrams and highlighted code |
+| SVG | `.svg` | Centered and scaled to fit the screen |
+| Images | JPEG, PNG, GIF, WebP, BMP, **AVIF** | Centered and scaled to fit the screen |
+| Comic books | `.cbz`, `.cbr`, `.cb7` | All pages in one vertical scroll |
+| DjVu | `.djvu`, `.djv` | All pages in one vertical scroll |
 
-## Development
+You can pinch to zoom in every view.
 
-MDviewer is built with:
-- Java / Android SDK (Min SDK 33)
-- WebView for rendering
-- [markdown-it](https://github.com/markdown-it/markdown-it) for Markdown parsing
-- [Apache Commons Compress](https://commons.apache.org/proper/commons-compress/) and [XZ for Java](https://tukaani.org/xz/java.html) for ZIP and 7z archives, [junrar](https://github.com/junrar/junrar) for RAR archives
-- [DjVu.js](https://github.com/RussCoder/djvujs) for DjVu documents
+### Markdown
 
-Images, comic book pages and DjVu files are served to `viewer.html` from the virtual origin
-`https://appassets.androidplatform.net/` by `ViewerContent`; network loads stay blocked.
-RAR and 7z pages are extracted in archive order to the app cache (solid archives cannot be
-read out of order) and deleted when another document is opened.
+- Headings, lists, tables, links, images, quotes and code blocks.
+- **Math** with KaTeX: `$inline$` and `$$block$$`.
+- **Diagrams** with Mermaid: use a ` ```mermaid ` code block.
+- **Syntax highlighting** for code blocks in many languages.
+- Task lists, footnotes, abbreviations, definition lists, emoji (`:smile:`),
+  ==highlight==, ++inserted++, ~subscript~, ^superscript^ and `::: warning` blocks.
+- **Obsidian-style notes**: `[[Another note]]` links, `[[note|alias]]`, `[[note#heading]]`,
+  and embedded media with `![[picture.png]]`, `![[clip.mp4]]` or `![[song.mp3]]`.
+- YAML front matter at the top of a note is hidden.
+- Links to other local notes, images, comics or DjVu files open in MDviewer.
+  Web links open in your browser.
 
-## Tests
+### Images
 
-- Android activity and archive tests: `./gradlew testDebugUnitTest`
-- Renderer regression tests (Node.js 22.22.2+ on the 22.x line): `npm ci` then `npm test`
-- Android checks and APK: `./gradlew lintDebug assembleDebug`
+AVIF images that your phone's gallery can't show still display here. MDviewer decodes images with
+the browser engine built into Android System WebView, not with the phone's own image decoder.
 
-The renderer tests exercise the bundled assets in a DOM environment. Mermaid's
-layout is stubbed; its input and security settings are checked. Android tests use
-Robolectric and do not require a device. Linked documents must already be readable
-by the app; Android document-provider grants do not automatically include sibling files.
+### Comic books
 
-The RAR fixtures in `app/src/test/resources/com/mdviewer` come from junrar's test suite.
+- Supports CBZ (ZIP), CBR (RAR 4 and RAR 5) and CB7 (7-Zip) files.
+- Pages are sorted the way you'd expect: `page2` comes before `page10`.
+- The file type is detected from its contents, so a `.cbr` that is really a ZIP still opens.
+- A page counter (`12 / 48`) appears while you scroll.
+- Password-protected archives are not supported.
 
-DOMPurify 3.4.15 is bundled for offline HTML sanitization from
-[the upstream release](https://github.com/cure53/DOMPurify/releases/tag/3.4.15).
-Its license is included in `app/src/main/assets/DOMPurify-LICENSE.txt`.
+### DjVu
 
-DjVu.js 0.5.4 is bundled as `app/src/main/assets/djvu.min.js`, built from the library sources in
-the `djvujs-dist` npm package with its rollup configuration and minified with terser. The library
-is licensed under the GNU GPL version 2; see `app/src/main/assets/DjVuJS-LICENSE.txt`.
-junrar is distributed under the UnRAR license, which allows decompression but not re-creating
-the RAR compression algorithm.
+- Pages are rendered as you scroll, so large scanned books open quickly.
+- Pages you've scrolled far away from are released to save memory.
+- Only single-file DjVu documents are supported, not documents split across many files.
+
+## Using the app
+
+- **Open a file**: launch MDviewer and tap **Open File** in the side menu. You can also choose
+  MDviewer from "Open with" in a file manager or another app.
+- **Side menu**: tap the ☰ button or swipe in from the middle of the left edge. It has
+  **Open File**, your five most **Recent Files**, and the **Theme** (System, Light or Dark).
+- **Share text to MDviewer**: share text from any app. MDviewer saves it as a `.md` file in your
+  Downloads folder and opens it.
+- **Full screen**: the status and navigation bars hide when you scroll down and come back when
+  you scroll up.
+
+## Privacy
+
+MDviewer works entirely offline and never connects to the internet. Web images inside a Markdown
+note are not loaded, and links to websites open in your own browser. HTML inside notes is
+sanitized, so scripts can't run.
+
+## Install
+
+Download the latest `MDviewer-build-<number>.apk` from the
+[Releases](../../releases) page and open it on your phone. You may need to allow installing apps
+from your browser or file manager. Requires Android 13 or newer.
+
+A new release is built automatically every time a change lands on `master`.
+
+## Building
+
+MDviewer is written in Java for Android 13+ (min SDK 33) and renders documents in a WebView.
+
+- Build the APK: `./gradlew assembleDebug`, or open the project in Android Studio.
+- Android and archive tests: `./gradlew testDebugUnitTest` (uses Robolectric, so no device is needed).
+- Lint: `./gradlew lintDebug`
+- Renderer tests (Node.js 22): `npm ci` then `npm test`
+
+The GitHub Actions workflow in `.github/workflows/release.yml` runs the tests and builds the APK
+for every pull request. For changes on `master`, it also publishes the APK as a release. To sign
+releases with a stable key, so that new versions can update an installed app, add your
+`~/.android/debug.keystore` as a base64-encoded repository secret named `DEBUG_KEYSTORE_BASE64`.
+
+### How documents are displayed
+
+Markdown is rendered by `main.js` from `template.html`. Images, comic books and DjVu files are
+shown by `viewer.html`. `ViewerContent` serves those files to the viewer from the address
+`https://appassets.androidplatform.net/` without any real network access. RAR and 7z pages are
+unpacked in order into the app's cache, because solid archives can't be read out of order. They
+are deleted when another file is opened.
+
+## Third-party components
+
+| Component | Used for | License |
+|---|---|---|
+| [markdown-it](https://github.com/markdown-it/markdown-it) and plugins | Markdown parsing | MIT |
+| [KaTeX](https://katex.org/) and markdown-it-texmath | Math | MIT |
+| [Mermaid](https://mermaid.js.org/) | Diagrams | MIT |
+| [highlight.js](https://highlightjs.org/) | Code highlighting | BSD-3-Clause |
+| [DOMPurify](https://github.com/cure53/DOMPurify) 3.4.15 | HTML sanitizing | Apache-2.0 / MPL-2.0 (`assets/DOMPurify-LICENSE.txt`) |
+| [Apache Commons Compress](https://commons.apache.org/proper/commons-compress/), [XZ for Java](https://tukaani.org/xz/java.html) | ZIP and 7z archives | Apache-2.0, 0BSD |
+| [junrar](https://github.com/junrar/junrar) | RAR archives | UnRAR license |
+| [DjVu.js](https://github.com/RussCoder/djvujs) 0.5.4 | DjVu documents | GPL-2.0 (`assets/DjVuJS-LICENSE.txt`) |
+
+- DjVu.js is bundled as `app/src/main/assets/djvu.min.js`. It was built from the library sources
+  in the `djvujs-dist` npm package with its rollup configuration, then minified with terser.
+- The UnRAR license allows extracting RAR files but not re-creating the RAR compression algorithm.
+- The RAR test files in `app/src/test/resources/com/mdviewer` come from junrar's test suite.
 
 ## License
 
-This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
+MDviewer is licensed under the GNU General Public License v3.0. See [LICENSE](LICENSE).
