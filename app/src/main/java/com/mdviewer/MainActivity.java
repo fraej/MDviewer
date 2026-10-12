@@ -46,12 +46,15 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
+import java.io.File;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
@@ -61,6 +64,16 @@ public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MainActivity";
     private static final String PREF_RECENT_FILES = "recent_files";
     private static final int MAX_RECENT_FILES = 5;
+    private static final String[] OPENABLE_TYPES = {
+            "text/markdown", "text/plain", "application/octet-stream", "image/*",
+            "image/vnd.djvu", "image/x-djvu", "application/vnd.comicbook+zip", "application/vnd.comicbook-rar",
+            "application/x-cbz", "application/x-cbr", "application/x-cb7", "application/zip",
+            "application/vnd.rar", "application/x-rar-compressed", "application/x-7z-compressed"
+    };
+    // Other activity instances in this process may still be showing their extracted pages.
+    private static boolean viewerCacheCleaned;
+    /** Assets that viewer.html may load from the virtual https origin. */
+    private static final List<String> VIEWER_ASSETS = Arrays.asList("viewer.css", "viewer.js", "djvu.min.js");
 
     private WebView webView;
     private DrawerLayout drawerLayout;
@@ -68,6 +81,8 @@ public class MainActivity extends AppCompatActivity {
     private NavigationView navigationView;
     private Uri currentUri;
     private String pendingFragment;
+    // Read by WebView request threads.
+    private volatile ViewerContent viewerContent;
 
     private final ActivityResultLauncher<String[]> filePickerLauncher = registerForActivityResult(
             new ActivityResultContracts.OpenDocument(),
@@ -134,7 +149,7 @@ public class MainActivity extends AppCompatActivity {
         navigationView.setNavigationItemSelectedListener(item -> {
             int id = item.getItemId();
             if (id == R.id.nav_open_file) {
-                filePickerLauncher.launch(new String[]{"text/markdown", "text/plain", "application/octet-stream", "image/svg+xml"});
+                filePickerLauncher.launch(OPENABLE_TYPES);
                 if (currentUri != null) {
                     drawerLayout.closeDrawer(GravityCompat.START);
                 }
@@ -176,6 +191,11 @@ public class MainActivity extends AppCompatActivity {
         });
 
         updateRecentFilesMenu();
+        if (!viewerCacheCleaned) {
+            // Remove pages extracted by a previous process that did not shut down cleanly.
+            viewerCacheCleaned = true;
+            ComicArchive.deleteRecursively(viewerCacheDir());
+        }
 
         // minSdk is 33 (Tiramisu), so we only need to check for granular media permissions
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) != PackageManager.PERMISSION_GRANTED ||
@@ -238,12 +258,13 @@ public class MainActivity extends AppCompatActivity {
                                 .matches(".*\\.(md|markdown|txt|svg)$");
                         supported |= "text/markdown".equals(type) || "text/plain".equals(type) ||
                                 "image/svg+xml".equals(type);
+                        supported |= ViewerContent.detectKind(name, type, null) != null;
                         if (supported && isFileAvailable(documentUri)) {
                             processFileUri(documentUri, url.getFragment());
                             addRecentFile(documentUri);
                         } else {
                             Toast.makeText(MainActivity.this,
-                                    "Cannot open this link. Use Open file to select an accessible Markdown or SVG file.",
+                                    "Cannot open this link. Use Open file to select an accessible document.",
                                     Toast.LENGTH_LONG).show();
                         }
                     } catch (SecurityException e) {
@@ -269,6 +290,9 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
                 Uri url = request.getUrl();
+                if (url != null && "https".equals(url.getScheme()) && ViewerContent.HOST.equals(url.getHost())) {
+                    return serveViewerRequest(url);
+                }
                 if (url != null && "file".equals(url.getScheme())) {
                     String path = url.getPath();
                     if (path != null && !path.startsWith("/android_asset/")) {
@@ -297,6 +321,12 @@ public class MainActivity extends AppCompatActivity {
         } else {
             handleIntent(getIntent());
         }
+    }
+
+    @Override
+    protected void onDestroy() {
+        closeViewerContent();
+        super.onDestroy();
     }
 
     private boolean isDarkMode() {
@@ -440,13 +470,14 @@ public class MainActivity extends AppCompatActivity {
         return result;
     }
 
-    private String getMimeType(String path) {
-        String lowerPath = path.toLowerCase();
+    static String getMimeType(String path) {
+        String lowerPath = path.toLowerCase(Locale.ROOT);
         if (lowerPath.endsWith(".png")) return "image/png";
         if (lowerPath.endsWith(".jpg") || lowerPath.endsWith(".jpeg")) return "image/jpeg";
         if (lowerPath.endsWith(".gif")) return "image/gif";
         if (lowerPath.endsWith(".svg")) return "image/svg+xml";
         if (lowerPath.endsWith(".webp")) return "image/webp";
+        if (lowerPath.endsWith(".avif")) return "image/avif";
         if (lowerPath.endsWith(".bmp")) return "image/bmp";
         if (lowerPath.endsWith(".mp4")) return "video/mp4";
         if (lowerPath.endsWith(".webm")) return "video/webm";
@@ -498,6 +529,7 @@ public class MainActivity extends AppCompatActivity {
     private void processFileUri(Uri uri, String fragment) {
         pendingFragment = fragment;
         currentUri = uri;
+        closeViewerContent();
         updateDrawerState();
         String mimeType = getContentResolver().getType(uri);
         boolean isSvg = false;
@@ -518,8 +550,31 @@ public class MainActivity extends AppCompatActivity {
 
         if (isSvg) {
             renderSvg(uri);
+            return;
+        }
+        String name = getFileName(uri);
+        ViewerContent.Kind kind = ViewerContent.detectKind(name, mimeType, readHeader(uri));
+        if (kind != null) {
+            renderViewer(uri, kind, name);
         } else {
             processMarkdownUri(uri);
+        }
+    }
+
+    /** Reads the first bytes of a file so that its type can be recognized by its signature. */
+    private byte[] readHeader(Uri uri) {
+        byte[] header = new byte[16];
+        try (InputStream inputStream = getContentResolver().openInputStream(uri)) {
+            if (inputStream == null) return null;
+            int length = 0;
+            int read;
+            while (length < header.length && (read = inputStream.read(header, length, header.length - length)) > 0) {
+                length += read;
+            }
+            return Arrays.copyOf(header, length);
+        } catch (Exception e) {
+            Log.e(TAG, "Error reading header of " + uri, e);
+            return null;
         }
     }
 
@@ -622,6 +677,43 @@ public class MainActivity extends AppCompatActivity {
         htmlTemplate = htmlTemplate.replace("{{MARKDOWN_BASE64}}", base64Markdown);
         htmlTemplate = htmlTemplate.replace("{{IS_DARK}}", isDarkMode() ? "true" : "false");
         webView.loadDataWithBaseURL(baseUrl, htmlTemplate, "text/html", "utf-8", baseUrl);
+    }
+
+    private File viewerCacheDir() {
+        return new File(getCacheDir(), "viewer");
+    }
+
+    private void closeViewerContent() {
+        ViewerContent content = viewerContent;
+        viewerContent = null;
+        if (content != null) content.close();
+    }
+
+    private void renderViewer(Uri uri, ViewerContent.Kind kind, String name) {
+        updateWebViewBackgroundColor();
+        ViewerContent content = new ViewerContent(getContentResolver(), uri, kind, name, viewerCacheDir());
+        viewerContent = content;
+        String htmlTemplate = loadAssetTemplate("viewer.html");
+        htmlTemplate = htmlTemplate.replace("{{KIND}}", kind.name().toLowerCase(Locale.ROOT));
+        htmlTemplate = htmlTemplate.replace("{{THEME}}", isDarkMode() ? "dark-mode" : "");
+        // The https base URL gives the viewer an origin from which it can fetch the document.
+        webView.loadDataWithBaseURL(content.getBaseUrl(), htmlTemplate, "text/html", "utf-8", content.getBaseUrl());
+    }
+
+    /** Serves viewer assets and the open document from the virtual https origin. */
+    private WebResourceResponse serveViewerRequest(Uri url) {
+        List<String> segments = url.getPathSegments();
+        if (segments.size() == 2 && "assets".equals(segments.get(0)) && VIEWER_ASSETS.contains(segments.get(1))) {
+            try {
+                return new WebResourceResponse(getMimeType(segments.get(1)), "UTF-8",
+                        getAssets().open(segments.get(1)));
+            } catch (IOException e) {
+                Log.e(TAG, "Error loading asset " + url, e);
+            }
+        }
+        ViewerContent content = viewerContent;
+        WebResourceResponse response = content != null ? content.serve(url) : null;
+        return response != null ? response : ViewerContent.notFound();
     }
 
     private void renderSvg(Uri uri) {
