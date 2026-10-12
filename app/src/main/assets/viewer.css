@@ -1,0 +1,78 @@
+html, body {
+    margin: 0;
+    padding: 0;
+    background-color: #ffffff;
+    color: #333333;
+    font-family: sans-serif;
+}
+
+body.dark-mode {
+    background-color: #000000;
+    color: #ffffff;
+}
+
+#pages {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+
+.page {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+
+/* Placeholders keep the scroll position stable until a page is decoded. */
+.page:not(.loaded) {
+    background-color: rgba(128, 128, 128, 0.15);
+}
+
+.page:not(.loaded):not([width]) {
+    aspect-ratio: 2 / 3;
+}
+
+body.single #pages {
+    min-height: 100vh;
+    justify-content: center;
+}
+
+body.single .page {
+    width: auto;
+    max-width: 100vw;
+    max-height: 100vh;
+    object-fit: contain;
+}
+
+body.single .page:not(.loaded) {
+    aspect-ratio: auto;
+    background-color: transparent;
+}
+
+#status {
+    position: fixed;
+    top: 50%;
+    left: 0;
+    right: 0;
+    margin: 0;
+    padding: 0 16px;
+    transform: translateY(-50%);
+    text-align: center;
+}
+
+#status[hidden], #counter[hidden] {
+    display: none;
+}
+
+#counter {
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    padding: 4px 10px;
+    border-radius: 12px;
+    background-color: rgba(0, 0, 0, 0.6);
+    color: #ffffff;
+    font-size: 14px;
+    pointer-events: none;
+}

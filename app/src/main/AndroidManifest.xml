@@ -35,9 +35,21 @@
                 <data android:mimeType="text/markdown" />
                 <data android:mimeType="text/plain" />
                 <data android:mimeType="image/svg+xml" />
+                <!-- Images (including AVIF) and DjVu documents (image/vnd.djvu, image/x-djvu). -->
+                <data android:mimeType="image/*" />
+                <data android:mimeType="application/vnd.comicbook+zip" />
+                <data android:mimeType="application/vnd.comicbook-rar" />
+                <data android:mimeType="application/x-cbz" />
+                <data android:mimeType="application/x-cbr" />
+                <data android:mimeType="application/x-cb7" />
                 <data android:host="*" />
                 <data android:pathPattern=".*\\.md" />
                 <data android:pathPattern=".*\\.svg" />
+                <data android:pathPattern=".*\\.djvu" />
+                <data android:pathPattern=".*\\.cbz" />
+                <data android:pathPattern=".*\\.cbr" />
+                <data android:pathPattern=".*\\.cb7" />
+                <data android:pathPattern=".*\\.avif" />
             </intent-filter>
 
             <intent-filter>

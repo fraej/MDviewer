@@ -38,11 +38,21 @@ android {
     testOptions {
         unitTests.isIncludeAndroidResources = true
     }
+    packaging {
+        resources {
+            // Apache Commons libraries each ship the same license files.
+            excludes += setOf("META-INF/LICENSE.txt", "META-INF/NOTICE.txt")
+        }
+    }
 }
 
 dependencies {
     implementation(libs.appcompat)
     implementation(libs.material)
+    // Comic book archives: ZIP and 7z (LZMA via xz), RAR 4 and 5.
+    implementation(libs.commons.compress)
+    implementation(libs.xz)
+    implementation(libs.junrar)
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     androidTestImplementation(libs.ext.junit)
